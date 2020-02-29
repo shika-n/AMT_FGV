@@ -1,8 +1,8 @@
-from PyQt5.QtCore import pyqtSignal, pyqtSlot, QThread, QObject
 import numpy as np
 from GUI.Graphics.Image import Image
 from GUI.LoadingWindow import LoadingWindow
-
+from PyQt5.QtCore import pyqtSignal, pyqtSlot, QThread, QObject
+from Util.Timer import Timer
 
 class AudioSpectrum (Image):
 
@@ -16,6 +16,13 @@ class AudioSpectrum (Image):
         self.__loading_window = LoadingWindow()
         self.__spectrum_worker = SpectrumWorker(self._width, self._height)
 
+        self.__spectrum_worker.moveToThread(self.__worker_thread)
+        self.__spectrum_worker.signal_update_progress.connect(self.__loading_window.set_progress)
+        self.__spectrum_worker.signal_update_status.connect(self.__loading_window.set_status)
+        self.__spectrum_worker.signal_worker_done.connect(self.__worker_done)
+        self.__spectrum_worker.signal_draw_line.connect(self.draw_line)
+        self.__worker_thread.started.connect(self.__spectrum_worker.run)
+
     def construct_from_data(self, sample_rate, data):
         self.__sample_rate = sample_rate
         self.__data = data
@@ -24,12 +31,7 @@ class AudioSpectrum (Image):
         self.__loading_window.show()
 
         self.__spectrum_worker.set_data(data)
-        self.__spectrum_worker.moveToThread(self.__worker_thread)
-        self.__spectrum_worker.signal_update_progress.connect(self.__loading_window.set_progress)
-        self.__spectrum_worker.signal_update_status.connect(self.__loading_window.set_status)
-        self.__spectrum_worker.signal_worker_done.connect(self.__worker_done)
-        self.__spectrum_worker.signal_draw_line.connect(self.draw_line)
-        self.__worker_thread.started.connect(self.__spectrum_worker.run)
+
         self.__worker_thread.start()
 
     def __worker_done(self):
@@ -54,13 +56,22 @@ class SpectrumWorker (QObject):
         self.__data = data
 
     def run(self):
+        timer = Timer()
+
+        # __data is in raw form, [[L, R], [L, R], ...]
         data_length = self.__data.shape[0]
         length_to_width_ratio = data_length / self.__width
 
         self.signal_update_status.emit('Resizing data...')
         resized_data = []
         for i in range(0, int(data_length / length_to_width_ratio)):
-            amp = np.sum(self.__data[int(i * length_to_width_ratio):int((i + 1) * length_to_width_ratio)], axis=0)
+            # Max/min with axis = 0 -> [[L, R], ...,  [L, R]] = [max/min_L, max/min_R]
+            data_window = self.__data[int(i * length_to_width_ratio):int((i + 1) * length_to_width_ratio)]
+            if i % 2 == 0:
+                amp = np.max(data_window, axis=0)
+            else:
+                amp = np.min(data_window, axis=0)
+
             resized_data.append(amp)
             self.signal_update_progress.emit(i / int(data_length / length_to_width_ratio))
 
@@ -68,12 +79,16 @@ class SpectrumWorker (QObject):
         norm = (self.__height / 2) / max
 
         self.signal_update_status.emit('Drawing the spectrum...')
+
+        # last_data will take the form of [L, R]
         last_data = resized_data[0]
         for x in range(1, self.__width):
             current_data = resized_data[x]
             self.signal_draw_line.emit(x - 1, int(last_data[0] * norm + self.__height / 2),
-                                x, int(current_data[0] * norm + self.__height / 2))
+                                       x, int(current_data[0] * norm + self.__height / 2))
             last_data = current_data
             self.signal_update_progress.emit(x / self.__width)
 
         self.signal_worker_done.emit()
+
+        print("AudioSpectrum worker took", timer.toc(), "second(s)!")
