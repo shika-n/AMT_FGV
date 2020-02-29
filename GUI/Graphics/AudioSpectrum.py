@@ -20,7 +20,7 @@ class AudioSpectrum (Image):
         self.__sample_rate = sample_rate
         self.__data = data
 
-        self.clear()
+        self.clear_image()
         self.__loading_window.show()
 
         self.__spectrum_worker.set_data(data)
