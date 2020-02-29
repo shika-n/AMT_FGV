@@ -29,9 +29,9 @@ class Window (QMainWindow):
         self.__view_h_scroll_bar = QScrollBar()
 
         # Menu Variables
-        self.__main_menu = self.menuBar().addMenu('File')
-        self.__open_action = QAction('Open')
-        self.__exit_action = QAction('Exit')
+        self.__main_menu = self.menuBar().addMenu('&File')
+        self.__open_action = QAction('&Open')
+        self.__exit_action = QAction('E&xit')
 
         self.__main_menu.addAction(self.__open_action)
         self.__main_menu.addSeparator()
