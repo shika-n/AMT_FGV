@@ -64,7 +64,7 @@ class SpectrumWorker (QObject):
 
         self.signal_update_status.emit('Resizing data...')
         resized_data = []
-        for i in range(0, int(data_length / length_to_width_ratio)):
+        for i in range(0, self.__width):
             # Max/min with axis = 0 -> [[L, R], ...,  [L, R]] = [max/min_L, max/min_R]
             data_window = self.__data[int(i * length_to_width_ratio):int((i + 1) * length_to_width_ratio)]
             if i % 2 == 0:
@@ -91,4 +91,4 @@ class SpectrumWorker (QObject):
 
         self.signal_worker_done.emit()
 
-        print("AudioSpectrum worker took", timer.toc(), "second(s)!")
+        print('AudioSpectrum worker took', timer.toc(), 'second(s)!')

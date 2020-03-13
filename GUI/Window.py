@@ -12,9 +12,9 @@ class Window (QMainWindow):
         self.setWindowTitle('AudioToScore')
 
         # Variables
-        view_width = 1024 * 10
+        view_width = 1024 * 1
         view_height = 128
-        self.__spectrogram_view = AudioSpectrogram(view_width, 1024)
+        self.__spectrogram_view = AudioSpectrogram(view_width, 512)
         self.__audio_view = AudioSpectrum(view_width, view_height)
         self.test_widget = Image(300, 300)
         self.__main_splitter = QSplitter()
@@ -99,6 +99,7 @@ class Window (QMainWindow):
         if file_path:
             sample_rate, data = wavfile.read(file_path)
             self.__audio_view.construct_from_data(sample_rate, data)
+            self.__spectrogram_view.construct_from_data(sample_rate, data)
 
     def exit_application(self):
         self.close()

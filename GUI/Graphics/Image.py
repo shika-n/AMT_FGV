@@ -1,3 +1,4 @@
+import numpy as np
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QLabel
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QColor
@@ -35,6 +36,12 @@ class Image (QLabel):
     def draw_line(self, x0, y0, x1, y1):
         self.__painter.setPen(QPen(Qt.white, 1))
         self.__painter.drawLine(x0, y0, x1, y1)
+
+    def draw_heatmap(self, x, data):
+        data_length = data.shape[0]
+        for y in range(0, self._height):
+            value = int(data[int(data_length * y / self._height)])
+            self.__image.setPixel(x, y, value)
 
     # for testing purposes
     def fill_gradient(self):
