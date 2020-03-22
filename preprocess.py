@@ -17,33 +17,40 @@ TOTAL_BINS = 252
 BINS_PER_OCTAVE = 36
 
 PITCH_RANGE = 108 - 21 + 1
-LABEL_COUNT = PITCH_RANGE * 2
 
 dataset_mutex = threading.Lock()
 
-def main():
-    #process(0, 'data/predict/MAPS_MUS-bk_xmas1_ENSTDkAm', 1.0)
 
+def main():
+    # process(0, 'data/predict/MAPS_MUS-bk_xmas1_ENSTDkAm', 1.0)
+    # with h5py.File('data/merged.h5', 'r+') as h5f:
+    #    save_spectrogram(np.transpose(h5f['data'][:313]), 'merged.png')
+
+    quit()
     file_names = get_file_list('data/train')
     create_empty_h5('data/merged')
-    batch_process(file_names, 5, 0.7, 'data/merged')
+    batch_process(file_names, 5, 'data/merged')
 
-    # SLOW
-    # shuffle_dataset('data/merged')
+    print('Standarization...')
+    # Standardization, time-wise (? axis=1)
+    with h5py.File('data/merged.h5', 'r+') as h5f:
+        mean = np.mean(h5f['data'][:], axis=0, keepdims=True)
+        std = np.std(h5f['data'][:], axis=0, keepdims=True)
+        h5f['data'][:] = np.divide(np.subtract(h5f['data'][:], mean), std)
 
 
-def batch_process(file_names, batch_size, training_percentage, h5file_name=''):
+def batch_process(file_names, batch_size, h5file_name=''):
     batch_timer = Timer()
     thread_batch = []
     for i, file_name in enumerate(file_names):
         if i % batch_size == 0:
             thread_batch.clear()
 
-        thread = threading.Thread(target=process, args=(i, file_name, training_percentage, h5file_name))
+        thread = threading.Thread(target=process, args=(i, file_name, h5file_name))
         thread_batch.append(thread)
         thread.start()
 
-        if (i + 1) % batch_size == 0 or i == len(file_names):
+        if (i + 1) % batch_size == 0 or i == len(file_names) - 1:
             for thread in thread_batch:
                 thread.join()
 
@@ -55,22 +62,19 @@ def shuffle_dataset(h5file_name):
     with Timer('Shuffling') as _:
         with h5py.File(h5file_name + '.h5', 'r+') as h5f:
             print('Shuffling ...')
-            shuffle_in_unison(h5f['train_data'], h5f['train_label'])
-            shuffle_in_unison(h5f['test_data'], h5f['test_label'])
+            shuffle_in_unison(h5f['data'], h5f['label'])
 
 
-def process(i, file_name, training_percentage, h5file_name=''):
-    cqt_result = generate_cqt(i, file_name + '.wav')
+def process(i, file_name, h5file_name=''):
+    cqt_result = generate_cqt(i, file_name + '.wav')  # (PITCH_RANGE, time)
 
-    # save_spectrogram(cqt_result, 'cqt result.png')
-    cqt_result = np.transpose(cqt_result)
+    cqt_result = cqt_result.T  # (time, PITCH_RANGE)
     # print('CQT shape:', cqt_result.shape)
 
     with Timer('[{}] CSV processing'.format(i)) as _:
         label_result = process_csv_data(i, file_name + '.txt', len(cqt_result))
         # print('Label shape:', label_result.shape)
         np.savetxt('label.txt', label_result, fmt='%i')
-        quit()
 
     with Timer('[{}] Shuffling'.format(i)) as _:
         print('[{}] Shuffling...'.format(i))
@@ -78,38 +82,25 @@ def process(i, file_name, training_percentage, h5file_name=''):
 
     if h5file_name == '':
         with h5py.File(file_name + '.h5', 'w') as h5f:
-            split_index = int(len(cqt_result) * training_percentage)
-            h5f.create_dataset('train_data', data=cqt_result[:split_index], compression='gzip')
-            h5f.create_dataset('train_label', data=label_result[:split_index], compression='gzip')
-            h5f.create_dataset('test_data', data=cqt_result[split_index:], compression='gzip')
-            h5f.create_dataset('test_label', data=label_result[split_index:], compression='gzip')
+            h5f.create_dataset('data', data=cqt_result, compression='gzip')
+            h5f.create_dataset('label', data=label_result, compression='gzip')
     else:
         with dataset_mutex:
             with h5py.File(h5file_name + '.h5', 'a') as h5f:
-                split_index = int(len(cqt_result) * training_percentage)
+                data = cqt_result
+                data_length = data.shape[0]
 
-                train_data = cqt_result[:split_index]
-                test_data = cqt_result[split_index:]
-                train_data_length = train_data.shape[0]
-                test_data_length = test_data.shape[0]
+                h5f['data'].resize(h5f['data'].shape[0] + data_length, axis=0)
+                h5f['label'].resize(h5f['label'].shape[0] + data_length, axis=0)
 
-                h5f['train_data'].resize(h5f['train_data'].shape[0] + train_data_length, axis=0)
-                h5f['train_label'].resize(h5f['train_label'].shape[0] + train_data_length, axis=0)
-                h5f['test_data'].resize(h5f['test_data'].shape[0] + test_data_length, axis=0)
-                h5f['test_label'].resize(h5f['test_label'].shape[0] + test_data_length, axis=0)
-
-                h5f['train_data'][-train_data_length:] = train_data
-                h5f['train_label'][-train_data_length:] = label_result[:split_index]
-                h5f['test_data'][-test_data_length:] = test_data
-                h5f['test_label'][-test_data_length:] = label_result[split_index:]
+                h5f['data'][-data_length:] = data
+                h5f['label'][-data_length:] = label_result
 
 
 def create_empty_h5(file_name):
     with h5py.File(file_name + '.h5', 'w') as h5f:
-        h5f.create_dataset('train_data', shape=(0, TOTAL_BINS), compression='gzip', chunks=True, maxshape=(None, TOTAL_BINS))
-        h5f.create_dataset('train_label', shape=(0, LABEL_COUNT), compression='gzip', chunks=True, maxshape=(None, LABEL_COUNT))
-        h5f.create_dataset('test_data', shape=(0, TOTAL_BINS), compression='gzip', chunks=True, maxshape=(None, TOTAL_BINS))
-        h5f.create_dataset('test_label', shape=(0, LABEL_COUNT), compression='gzip', chunks=True, maxshape=(None, LABEL_COUNT))
+        h5f.create_dataset('data', shape=(0, TOTAL_BINS), compression='gzip', chunks=True, maxshape=(None, TOTAL_BINS))
+        h5f.create_dataset('label', shape=(0, PITCH_RANGE * 2), compression='gzip', chunks=True, maxshape=(None, PITCH_RANGE * 2))
 
 
 def shuffle_in_unison(a, b):
@@ -142,7 +133,7 @@ def process_csv_data(i, file_path, cqt_length):
 
             sets[i] = [onset, offset, midi_pitch]
 
-        result = np.zeros([cqt_length, LABEL_COUNT])
+        result = np.zeros([cqt_length, PITCH_RANGE * 2])
         time_stamps = frames_to_time(range(0, cqt_length + 1), sr=TARGET_SAMPLE_RATE, hop_length=HOP_LENGTH)
         process_csv_data_jit(sets, time_stamps, cqt_length, result)
 
@@ -186,10 +177,6 @@ def generate_cqt(i, file_path, offset=0, duration=None):
     with Timer('[{}] CQT'.format(i)) as _:
         print('[{}] Generating CQT...'.format(i))
         cqt_result = np.abs(cqt(downsampled_data, sr=TARGET_SAMPLE_RATE, hop_length=HOP_LENGTH, n_bins=TOTAL_BINS, bins_per_octave=BINS_PER_OCTAVE))
-
-    # mean = np.mean(cqt_result, axis=1, keepdims=True)
-    # std = np.std(cqt_result, axis=1, keepdims=True)
-    # cqt_result = np.divide(np.subtract(cqt_result, mean), std)
 
     return cqt_result
 

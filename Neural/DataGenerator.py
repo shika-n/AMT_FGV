@@ -6,9 +6,10 @@ from preprocess import PITCH_RANGE
 
 
 class DataGenerator(Sequence):
-    def __init__(self, file_name, batch_size, is_test=False):
+    def __init__(self, file_name, batch_size, training_ratio, is_test=False):
         self.file_name = file_name
         self.batch_size = batch_size
+        self.training_ratio = training_ratio
         self.is_test = is_test
         self.indices = np.arange(self.__len__())
 
@@ -23,27 +24,45 @@ class DataGenerator(Sequence):
             start_index = index * self.batch_size
             end_index = (index + 1) * self.batch_size
 
-            if not self.is_test:
-                data = h5f['train_data'][start_index:end_index]
-                label = h5f['train_label'][start_index:end_index]
+            if self.is_test:
+                start_index += self.get_length_spec(False)
+                end_index += self.get_length_spec(False)
             else:
-                data = h5f['test_data'][start_index:end_index]
-                label = h5f['test_label'][start_index:end_index]
+                end_index = np.clip(end_index, 0, self.get_length())
+
+            data = h5f['data'][start_index:end_index]
+            label = h5f['label'][start_index:end_index]
 
         return data, label
 
     def get_length(self):
         length = 0
         with h5py.File(self.file_name + '.h5', 'r') as h5f:
-            length = h5py.Dataset.len(h5f['train_data'])
+            ratio = self.training_ratio
+            if self.is_test:
+                ratio = 1.0 - ratio
+
+            length = np.floor(h5py.Dataset.len(h5f['data']) * ratio)
+
+        return length
+
+    def get_length_spec(self, is_test):
+        length = 0
+        with h5py.File(self.file_name + '.h5', 'r') as h5f:
+            ratio = self.training_ratio
+            if is_test:
+                ratio = 1.0 - ratio
+
+            length = np.floor(h5py.Dataset.len(h5f['data']) * ratio)
 
         return length
 
 
 class DataGenerator88(Sequence):
-    def __init__(self, file_name, batch_size, is_test=False):
+    def __init__(self, file_name, batch_size, training_ratio, is_test=False):
         self.file_name = file_name
         self.batch_size = batch_size
+        self.training_ratio = training_ratio
         self.is_test = is_test
         self.indices = np.arange(self.__len__())
 
@@ -59,49 +78,40 @@ class DataGenerator88(Sequence):
             start_index = index * self.batch_size
             end_index = (index + 1) * self.batch_size
 
-            if not self.is_test:
-                data = h5f['train_data'][start_index:end_index]
-                label = h5f['train_label'][start_index:end_index]
-                #print("=", data.shape, label.shape)
+            if self.is_test:
+                start_index += self.get_length_spec(False)
+                end_index += self.get_length_spec(False)
             else:
-                data = h5f['test_data'][start_index:end_index]
-                label = h5f['test_label'][start_index:end_index]
+                if end_index >= self.get_length():
+                    end_index = self.get_length() - 1
+
+            data = h5f['data'][start_index:end_index]
+            label = h5f['label'][start_index:end_index]
 
             # =====
-            '''if self.is_test:
-                print('+++++++++++++++++++++', index, self.get_length(), start_index, end_index)
-            else:
-                print('=====================', index)
-            '''
             for i in range(PITCH_RANGE):
-                one_hot = self.get_one_hot_arr(i, label)
-                # print(label.shape[0], one_hot.shape)
-                final_label['out{}'.format(i)] = one_hot
+                final_label['out{}'.format(i)] = label[:, i + PITCH_RANGE]
 
         return data, final_label
 
     def get_length(self):
         length = 0
         with h5py.File(self.file_name + '.h5', 'r') as h5f:
-            if not self.is_test:
-                length = h5py.Dataset.len(h5f['train_data'])
-            else:
-                length = h5py.Dataset.len(h5f['test_data'])
+            ratio = self.training_ratio
+            if self.is_test:
+                ratio = 1.0 - ratio
 
-        return length
+            length = np.floor(h5py.Dataset.len(h5f['data']) * ratio)
 
-    def get_one_hot_arr(self, pitch, label):
-        one_hot_arr = []
-        for col in range(label.shape[0]):
-            one_hot_arr.append(self.label_to_one_hot(pitch, label[col]))
-        #print(len(one_hot_arr))
+        return int(length)
 
-        return np.asarray(one_hot_arr)
+    def get_length_spec(self, is_test):
+        length = 0
+        with h5py.File(self.file_name + '.h5', 'r') as h5f:
+            ratio = self.training_ratio
+            if is_test:
+                ratio = 1.0 - ratio
 
-    def label_to_one_hot(self, pitch, label):
-        if label[pitch] == 1:  # Onset
-            return np.asarray([1, 0, 0])
-        elif label[pitch + PITCH_RANGE] == 1:  # Still
-            return np.asarray([0, 1, 0])
-        else:  # None
-            return np.asarray([0, 0, 1])
+            length = np.floor(h5py.Dataset.len(h5f['data']) * ratio)
+
+        return int(length)

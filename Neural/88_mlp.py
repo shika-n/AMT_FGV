@@ -23,15 +23,15 @@ def main():
     if isfile(checkpoint_file_path):
         model = load_model(checkpoint_file_path)
 
-    train_gen = DataGenerator88('../data/merged', 128)
-    test_gen = DataGenerator88('../data/merged', 128, is_test=True)
+    train_gen = DataGenerator88('../data/merged', 128, 0.7)
+    test_gen = DataGenerator88('../data/merged', 128, 0.7, is_test=True)
 
-    checkpoint = ModelCheckpoint(checkpoint_file_path, monitor='loss', verbose=1, save_best_only=True, mode='min')
+    checkpoint = ModelCheckpoint(checkpoint_file_path, monitor='val_loss', verbose=1, save_best_only=True, mode='min')
 
-    #model.fit(train_gen, verbose=1)
+    # model.fit(train_gen, verbose=1)
     model.fit(x=train_gen,
-              epochs=1000,
-              verbose=1,
+              epochs=10,
+              verbose=2,
               validation_data=test_gen,
               callbacks=[checkpoint])
 
@@ -52,7 +52,7 @@ def create_model():
 
     losses = {}
     for i in range(PITCH_RANGE):
-        losses['out{}'.format(i)] = 'categorical_crossentropy'
+        losses['out{}'.format(i)] = 'binary_crossentropy'
 
     model.compile(optimizer='rmsprop',
                   loss=losses,
@@ -63,7 +63,7 @@ def create_model():
 
 def create_sub_model(i, input_layer):
     sub_model_input = Dense(100, activation='relu', name='sub_in{}'.format(i))(input_layer)
-    sub_model_output = Dense(3, activation='softmax', name='out{}'.format(i))(sub_model_input)
+    sub_model_output = Dense(1, activation='sigmoid', name='out{}'.format(i))(sub_model_input)
 
     return sub_model_output
 
