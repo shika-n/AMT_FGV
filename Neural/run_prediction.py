@@ -6,8 +6,12 @@ from preprocess import generate_cqt, process_csv_data, PITCH_RANGE
 def main():  # ENSTDkAm/MUS/
     test_file_name = '../data/predict/MAPS_MUS-bk_xmas1_ENSTDkAm'
     cqt_result = generate_cqt(0, test_file_name + '.wav')
-    cqt_result = np.transpose(cqt_result)
+    cqt_result = cqt_result.T
     label_result = process_csv_data(0, test_file_name + '.txt', len(cqt_result))
+
+    mean = np.mean(cqt_result, axis=0, keepdims=True)
+    std = np.std(cqt_result, axis=0, keepdims=True)
+    cqt_result = np.divide(np.subtract(cqt_result, mean), std)
 
     is_88 = True
     if is_88:
@@ -59,7 +63,7 @@ def calculate_accuracy(labels, predictions):
 
 
 def predict88(cqt_result):
-    model = load_model('model_train_88_input_non_standardized.best.h5')
+    model = load_model('model_train_88.best.h5')
     predictions = model.predict(cqt_result)
     return np.asarray(predictions)
 

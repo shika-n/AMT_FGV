@@ -26,17 +26,22 @@ def main():
     # with h5py.File('data/merged.h5', 'r+') as h5f:
     #    save_spectrogram(np.transpose(h5f['data'][:313]), 'merged.png')
 
-    quit()
-    file_names = get_file_list('data/train')
-    create_empty_h5('data/merged')
-    batch_process(file_names, 5, 'data/merged')
+    # quit()
 
-    print('Standarization...')
-    # Standardization, time-wise (? axis=1)
-    with h5py.File('data/merged.h5', 'r+') as h5f:
-        mean = np.mean(h5f['data'][:], axis=0, keepdims=True)
-        std = np.std(h5f['data'][:], axis=0, keepdims=True)
-        h5f['data'][:] = np.divide(np.subtract(h5f['data'][:], mean), std)
+    file_names = get_file_list('data/train')
+    print(len(file_names), 'files detected')
+
+    create_empty_h5('data/merged')
+    with Timer('Batch process'):
+        batch_process(file_names, 5, 'data/merged')
+
+    with Timer('Standardization'):
+        print('Standardization...')
+        # Standardization, time-wise (? axis=1) (transposed -> axis=0)
+        with h5py.File('data/merged.h5', 'r+') as h5f:
+            mean = np.mean(h5f['data'][:], axis=0, keepdims=True)
+            std = np.std(h5f['data'][:], axis=0, keepdims=True)
+            h5f['data'][:] = np.divide(np.subtract(h5f['data'][:], mean), std)
 
 
 def batch_process(file_names, batch_size, h5file_name=''):
@@ -57,28 +62,16 @@ def batch_process(file_names, batch_size, h5file_name=''):
             print('======== {}/{} files processed.'.format(i + 1, len(file_names)), batch_timer.toc(), 'second(s) has passed')
 
 
-# SLOW!
-def shuffle_dataset(h5file_name):
-    with Timer('Shuffling') as _:
-        with h5py.File(h5file_name + '.h5', 'r+') as h5f:
-            print('Shuffling ...')
-            shuffle_in_unison(h5f['data'], h5f['label'])
-
-
 def process(i, file_name, h5file_name=''):
     cqt_result = generate_cqt(i, file_name + '.wav')  # (PITCH_RANGE, time)
 
     cqt_result = cqt_result.T  # (time, PITCH_RANGE)
     # print('CQT shape:', cqt_result.shape)
 
-    with Timer('[{}] CSV processing'.format(i)) as _:
+    with Timer('[{}] CSV processing'.format(i)):
         label_result = process_csv_data(i, file_name + '.txt', len(cqt_result))
         # print('Label shape:', label_result.shape)
         np.savetxt('label.txt', label_result, fmt='%i')
-
-    with Timer('[{}] Shuffling'.format(i)) as _:
-        print('[{}] Shuffling...'.format(i))
-        shuffle_in_unison(cqt_result, label_result)
 
     if h5file_name == '':
         with h5py.File(file_name + '.h5', 'w') as h5f:
@@ -101,13 +94,6 @@ def create_empty_h5(file_name):
     with h5py.File(file_name + '.h5', 'w') as h5f:
         h5f.create_dataset('data', shape=(0, TOTAL_BINS), compression='gzip', chunks=True, maxshape=(None, TOTAL_BINS))
         h5f.create_dataset('label', shape=(0, PITCH_RANGE * 2), compression='gzip', chunks=True, maxshape=(None, PITCH_RANGE * 2))
-
-
-def shuffle_in_unison(a, b):
-    state = np.random.get_state()
-    np.random.shuffle(a)
-    np.random.set_state(state)
-    np.random.shuffle(b)
 
 
 def process_csv_data(i, file_path, cqt_length):
@@ -164,17 +150,17 @@ def generate_cqt(i, file_path, offset=0, duration=None):
     print('[{}] Sample Rate:'.format(i), sample_rate, 'shape:', data.shape)
 
     if len(data.shape) == 2:
-        with Timer('[{}] Converted to mono'.format(i)) as _:
+        with Timer('[{}] Converted to mono'.format(i)):
             print('[{}] Converting to mono channel...'.format(i))
             data = to_mono(data)
 
-    with Timer('[{}] Resampling'.format(i)) as _:
+    with Timer('[{}] Resampling'.format(i)):
         print('[{}] Resampling to'.format(i), TARGET_SAMPLE_RATE, 'Hz...')
         downsampled_data = resample(data, orig_sr=sample_rate, target_sr=TARGET_SAMPLE_RATE)
         # downsampled_data = data
         print('[{}] Downsampled to'.format(i), TARGET_SAMPLE_RATE, 'Hz shape is now', downsampled_data.shape)
 
-    with Timer('[{}] CQT'.format(i)) as _:
+    with Timer('[{}] CQT'.format(i)):
         print('[{}] Generating CQT...'.format(i))
         cqt_result = np.abs(cqt(downsampled_data, sr=TARGET_SAMPLE_RATE, hop_length=HOP_LENGTH, n_bins=TOTAL_BINS, bins_per_octave=BINS_PER_OCTAVE))
 
