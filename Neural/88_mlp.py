@@ -23,8 +23,8 @@ def main():
     if isfile(checkpoint_file_path):
         model = load_model(checkpoint_file_path)
 
-    train_gen = DataGenerator88('../data/merged', 512, 0.8)
-    test_gen = DataGenerator88('../data/merged', 512, 0.8, is_test=True)
+    train_gen = DataGenerator88('../data/merged', 32, 0.8)
+    test_gen = DataGenerator88('../data/merged', 32, 0.8, is_test=True)
 
     checkpoint = ModelCheckpoint(checkpoint_file_path, monitor='loss', verbose=1, save_best_only=True, mode='min')
 

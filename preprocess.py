@@ -22,14 +22,21 @@ dataset_mutex = threading.Lock()
 
 
 def main():
-    # process(0, 'data/predict/MAPS_MUS-bk_xmas1_ENSTDkAm', 1.0)
-    # with h5py.File('data/merged.h5', 'r+') as h5f:
-    #    save_spectrogram(np.transpose(h5f['data'][:313]), 'merged.png')
+    # create_empty_h5('data/merged_one')
+    # process(0, 'data/predict/MAPS_MUS-bk_xmas1_ENSTDkAm', 'data/merged_one')
+    # with h5py.File('data/merged_one.h5', 'r+') as h5f:
+    #    mean = np.mean(h5f['data'][:], axis=1, keepdims=True)
+    #    std = np.std(h5f['data'][:], axis=1, keepdims=True)
+    #    h5f['data'][:] = np.divide(np.subtract(h5f['data'][:], mean), std)
+    #    save_spectrogram(h5f['data'][:, :313], 'merged_one.png')
 
     # quit()
 
     file_names = get_file_list('data/train')
     print(len(file_names), 'files detected')
+
+    # file_names = ['data/predict/MAPS_MUS-bk_xmas1_ENSTDkAm']
+    # file_names = file_names[:50]
 
     create_empty_h5('data/merged')
     with Timer('Batch process'):
@@ -37,11 +44,17 @@ def main():
 
     with Timer('Standardization'):
         print('Standardization...')
-        # Standardization, time-wise (? axis=1) (transposed -> axis=0)
+        # Standardization, time-wise (axis=1, when doing all of them at once)
         with h5py.File('data/merged.h5', 'r+') as h5f:
-            mean = np.mean(h5f['data'][:], axis=0, keepdims=True)
-            std = np.std(h5f['data'][:], axis=0, keepdims=True)
-            h5f['data'][:] = np.divide(np.subtract(h5f['data'][:], mean), std)
+            for i in range(TOTAL_BINS):
+                data = h5f['data'][i, :]
+                mean = np.mean(data, keepdims=True)
+                std = np.std(data, keepdims=True)
+                h5f['data'][i, :] = np.divide(np.subtract(data, mean), std)
+
+                print('{}/{}'.format(i + 1, TOTAL_BINS))
+
+            #save_spectrogram(h5f['data'][:, :313], 'merged.png')
 
 
 def batch_process(file_names, batch_size, h5file_name=''):
@@ -65,11 +78,11 @@ def batch_process(file_names, batch_size, h5file_name=''):
 def process(i, file_name, h5file_name=''):
     cqt_result = generate_cqt(i, file_name + '.wav')  # (PITCH_RANGE, time)
 
-    cqt_result = cqt_result.T  # (time, PITCH_RANGE)
+    #cqt_result = cqt_result.T  # (time, PITCH_RANGE)
     # print('CQT shape:', cqt_result.shape)
 
     with Timer('[{}] CSV processing'.format(i)):
-        label_result = process_csv_data(i, file_name + '.txt', len(cqt_result))
+        label_result = process_csv_data(i, file_name + '.txt', cqt_result.shape[1])
         # print('Label shape:', label_result.shape)
         np.savetxt('label.txt', label_result, fmt='%i')
 
@@ -80,20 +93,19 @@ def process(i, file_name, h5file_name=''):
     else:
         with dataset_mutex:
             with h5py.File(h5file_name + '.h5', 'a') as h5f:
-                data = cqt_result
-                data_length = data.shape[0]
+                data_length = cqt_result.shape[1]
 
-                h5f['data'].resize(h5f['data'].shape[0] + data_length, axis=0)
-                h5f['label'].resize(h5f['label'].shape[0] + data_length, axis=0)
+                h5f['data'].resize(h5f['data'].shape[1] + data_length, axis=1)
+                h5f['label'].resize(h5f['label'].shape[1] + data_length, axis=1)
 
-                h5f['data'][-data_length:] = data
-                h5f['label'][-data_length:] = label_result
+                h5f['data'][:, -data_length:] = cqt_result
+                h5f['label'][:, -data_length:] = label_result
 
 
 def create_empty_h5(file_name):
     with h5py.File(file_name + '.h5', 'w') as h5f:
-        h5f.create_dataset('data', shape=(0, TOTAL_BINS), compression='gzip', chunks=True, maxshape=(None, TOTAL_BINS))
-        h5f.create_dataset('label', shape=(0, PITCH_RANGE * 2), compression='gzip', chunks=True, maxshape=(None, PITCH_RANGE * 2))
+        h5f.create_dataset('data', shape=(TOTAL_BINS, 0), compression='gzip', chunks=True, maxshape=(TOTAL_BINS, None))
+        h5f.create_dataset('label', shape=(PITCH_RANGE * 2, 0), compression='gzip', chunks=True, maxshape=(PITCH_RANGE * 2, None))
 
 
 def process_csv_data(i, file_path, cqt_length):
@@ -119,7 +131,7 @@ def process_csv_data(i, file_path, cqt_length):
 
             sets[i] = [onset, offset, midi_pitch]
 
-        result = np.zeros([cqt_length, PITCH_RANGE * 2])
+        result = np.zeros([PITCH_RANGE * 2, cqt_length])
         time_stamps = frames_to_time(range(0, cqt_length + 1), sr=TARGET_SAMPLE_RATE, hop_length=HOP_LENGTH)
         process_csv_data_jit(sets, time_stamps, cqt_length, result)
 
@@ -138,10 +150,10 @@ def process_csv_data_jit(sets, time_stamps, cqt_length, out_result):
             pitch = sets[i, 2]
 
             if start_time <= onset < until_time:
-                out_result[col, int(pitch - 21)] = 1
-                out_result[col, int(pitch - 21 + PITCH_RANGE)] = 1
+                out_result[int(pitch - 21), col] = 1
+                out_result[int(pitch - 21 + PITCH_RANGE), col] = 1
             elif onset <= start_time and (offset > until_time or start_time <= offset < until_time):
-                out_result[col, int(pitch - 21 + PITCH_RANGE)] = 1
+                out_result[int(pitch - 21 + PITCH_RANGE), col] = 1
 
 
 def generate_cqt(i, file_path, offset=0, duration=None):
