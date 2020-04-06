@@ -9,7 +9,7 @@ from tensorflow.keras.metrics import BinaryAccuracy
 from tensorflow.keras.models import load_model
 from tensorflow.keras.optimizers import SGD
 from tensorflow.keras.utils import plot_model
-from Neural.DataGenerator import DataGenerator88
+from Neural.DataGenerator import DataGenerator88, EpochGraphCallback
 from preprocess import PITCH_RANGE
 
 def main():
@@ -33,7 +33,7 @@ def main():
               epochs=10,
               verbose=1,
               validation_data=test_gen,
-              callbacks=[checkpoint])
+              callbacks=[checkpoint, EpochGraphCallback()])
 
 
 def open_h5(file_name):

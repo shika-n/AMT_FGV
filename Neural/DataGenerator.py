@@ -2,6 +2,7 @@ import h5py
 import numpy as np
 from numba import jit
 from tensorflow.keras.utils import Sequence
+from tensorflow.keras.callbacks import Callback
 from preprocess import PITCH_RANGE
 
 
@@ -85,3 +86,19 @@ class DataGenerator88(DataGenerator):
                 final_label['out{}'.format(i)] = label[i + PITCH_RANGE, :]
 
         return data, final_label
+
+
+class EpochGraphCallback(Callback):
+    def __init__(self, file_name):
+        self.file_name = file_name
+        with h5py.File(file_name + '.h5', 'w') as h5f:
+            # epoch, loss, val_loss
+            h5f.create_dataset('data', shape=(0, 3), compression='gzip', chunks=True, maxshape=(None, 3))
+
+    def on_epoch_end(self, epoch, logs=None):
+        print("Saving data for epoch #{}".format(epoch))
+
+        with h5py.File(self.file_name + '.h5', 'a') as h5f:
+            h5f['data'].resize(h5f['data'].shape[0] + 1, axis=0)
+
+            h5f['data'][-1:] = [epoch, logs['loss'], logs['val_loss']]
