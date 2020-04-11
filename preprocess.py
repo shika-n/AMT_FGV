@@ -40,7 +40,7 @@ def main():
 
     create_empty_h5('data/merged')
     with Timer('Batch process'):
-        batch_process(file_names, 5, 'data/merged')
+        batch_process(file_names, 5, 'data/merged', 60)
 
     with Timer('Standardization'):
         print('Standardization...')
@@ -57,14 +57,14 @@ def main():
             #save_spectrogram(h5f['data'][:, :313], 'merged.png')
 
 
-def batch_process(file_names, batch_size, h5file_name=''):
+def batch_process(file_names, batch_size, h5file_name='', duration=None):
     batch_timer = Timer()
     thread_batch = []
     for i, file_name in enumerate(file_names):
         if i % batch_size == 0:
             thread_batch.clear()
 
-        thread = threading.Thread(target=process, args=(i, file_name, h5file_name))
+        thread = threading.Thread(target=process, args=(i, file_name, h5file_name, duration))
         thread_batch.append(thread)
         thread.start()
 
@@ -75,11 +75,8 @@ def batch_process(file_names, batch_size, h5file_name=''):
             print('======== {}/{} files processed.'.format(i + 1, len(file_names)), batch_timer.toc(), 'second(s) has passed')
 
 
-def process(i, file_name, h5file_name=''):
-    cqt_result = generate_cqt(i, file_name + '.wav')  # (PITCH_RANGE, time)
-
-    #cqt_result = cqt_result.T  # (time, PITCH_RANGE)
-    # print('CQT shape:', cqt_result.shape)
+def process(i, file_name, h5file_name='', duration=None):
+    cqt_result = generate_cqt(i, file_name + '.wav', duration=duration)  # (PITCH_RANGE, time)
 
     with Timer('[{}] CSV processing'.format(i)):
         label_result = process_csv_data(i, file_name + '.txt', cqt_result.shape[1])

@@ -12,7 +12,7 @@ class Timer:
         return (self.__get_time() - self.start) / 1000000000
 
     def __get_time(self):
-        return time.perf_counter_ns()
+        return time.perf_counter()
 
     def __enter__(self):
         return self

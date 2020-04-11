@@ -6,13 +6,56 @@ from tensorflow.keras.callbacks import Callback
 from preprocess import PITCH_RANGE
 
 
+class FoldGen:
+    def __init__(self, file_name):
+        self.file_name = file_name
+        self.indices = np.arange(self._get_sample_count())
+
+        self._shuffle_indices()
+
+    def _shuffle_indices(self):
+        np.random.shuffle(self.indices)
+
+    def _get_sample_count(self):
+        length = 0
+        with h5py.File(self.file_name + '.h5', 'r') as h5f:
+            length = h5py.Dataset.len(h5f['data'][0])
+
+        return int(length)
+
+    def fold_gen_pair(self, batch_size, fold_n, n=0):
+        test_ratio = 1.0 / fold_n
+        train_ratio = 1.0 - test_ratio
+
+        train_sample_count = int(np.floor(self.indices.shape[0] * train_ratio))
+        test_sample_count = int(np.floor(self.indices.shape[0] * test_ratio))
+
+        test_offset = n * test_sample_count
+
+        test_indices = self.indices[test_offset:(test_offset + test_sample_count)]
+        train_indices = np.concatenate([self.indices[:test_offset], self.indices[(test_offset + test_sample_count):]])
+
+        train_gen = DataGenerator88(self.file_name, batch_size, 1.0 - test_ratio)
+        test_gen = DataGenerator88(self.file_name, batch_size, test_ratio)
+
+        train_gen.overwrite_indices(train_indices)
+        test_gen.overwrite_indices(test_indices)
+
+        return train_gen, test_gen
+
+
 class DataGenerator(Sequence):
     def __init__(self, file_name, batch_size, used_ratio, is_test=False):
         self.file_name = file_name
         self.batch_size = batch_size
         self.used_ratio = used_ratio
         self.is_test = is_test
-        self.indices = np.arange(self.get_length())  # training/test length
+        self.indices = np.arange(self.get_length(True))  # training/test length
+
+        if self.is_test:
+            offset = 0
+            offset = self._get_training_length()
+            self.indices += offset
 
     def __len__(self):
         return int(np.ceil(self.get_length() / self.batch_size))
@@ -24,11 +67,7 @@ class DataGenerator(Sequence):
         start_index = index * self.batch_size
         end_index = (index + 1) * self.batch_size
 
-        offset = 0
-        if self.is_test:
-            offset = self.get_training_length()
-
-        indices_to_use = np.sort(self.indices[start_index:end_index]) + offset
+        indices_to_use = np.sort(self.indices[start_index:end_index])
 
         with h5py.File(self.file_name + '.h5', 'r') as h5f:
             data = h5f['data'][:, indices_to_use].T
@@ -36,22 +75,29 @@ class DataGenerator(Sequence):
 
         return data, label
 
+    def overwrite_indices(self, indices):
+        # assert self.indices.shape[0] == indices.shape[0], 'Overwriting indices need both to have the same length {}, {}'.format(self.indices.shape[0], indices.shape[0])
+        self.indices = indices
+
     def on_epoch_end(self):
         np.random.shuffle(self.indices)
 
-    def get_length(self):
-        length = 0
-        with h5py.File(self.file_name + '.h5', 'r') as h5f:
-            ratio = self.used_ratio
+    def get_length(self, force_read_file=False):
+        if force_read_file:
+            length = 0
+            with h5py.File(self.file_name + '.h5', 'r') as h5f:
+                ratio = self.used_ratio
 
-            if self.is_test:
-                ratio = 1.0 - ratio  # test data ratio
+                if self.is_test:
+                    ratio = 1.0 - ratio  # test data ratio
 
-            length = np.floor(h5py.Dataset.len(h5f['data'][0]) * ratio)
+                length = np.floor(h5py.Dataset.len(h5f['data'][0]) * ratio)
 
-        return int(length)
+            return int(length)
+        else:
+            return self.indices.shape[0]
 
-    def get_training_length(self):
+    def _get_training_length(self): # Should not be accessed outside of this class
         length = 0
         with h5py.File(self.file_name + '.h5', 'r') as h5f:
             length = np.floor(h5py.Dataset.len(h5f['data'][0]) * self.used_ratio)
@@ -71,11 +117,7 @@ class DataGenerator88(DataGenerator):
         start_index = index * self.batch_size
         end_index = (index + 1) * self.batch_size
 
-        offset = 0
-        if self.is_test:
-            offset = self.get_training_length()
-
-        indices_to_use = np.sort(self.indices[start_index:end_index]) + offset
+        indices_to_use = np.sort(self.indices[start_index:end_index])
 
         with h5py.File(self.file_name + '.h5', 'r') as h5f:
             data = h5f['data'][:, indices_to_use].T
@@ -96,7 +138,7 @@ class EpochGraphCallback(Callback):
             h5f.create_dataset('data', shape=(0, 3), compression='gzip', chunks=True, maxshape=(None, 3))
 
     def on_epoch_end(self, epoch, logs=None):
-        print("Saving data for epoch #{}".format(epoch))
+        print('Epoch #{}, loss={}, val_loss={}'.format(epoch, logs['loss'], logs['val_loss']))
 
         with h5py.File(self.file_name + '.h5', 'a') as h5f:
             h5f['data'].resize(h5f['data'].shape[0] + 1, axis=0)

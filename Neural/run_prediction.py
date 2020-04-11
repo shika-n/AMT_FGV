@@ -1,13 +1,18 @@
+import sys
+sys.path.append('')
+print(sys.path)
+
 import numpy as np
 from tensorflow.keras.models import load_model
+from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score
 from preprocess import generate_cqt, process_csv_data, PITCH_RANGE
 
 
 def main():  # ENSTDkAm/MUS/
     test_file_name = '../data/predict/MAPS_MUS-bk_xmas1_ENSTDkAm'
-    cqt_result = generate_cqt(0, test_file_name + '.wav')
+    cqt_result = generate_cqt(0, test_file_name + '.wav', duration=10)
+    label_result = process_csv_data(0, test_file_name + '.txt', cqt_result.shape[1])
     cqt_result = cqt_result.T
-    label_result = process_csv_data(0, test_file_name + '.txt', len(cqt_result))
 
     mean = np.mean(cqt_result, axis=0, keepdims=True)
     std = np.std(cqt_result, axis=0, keepdims=True)
@@ -37,7 +42,35 @@ def main():  # ENSTDkAm/MUS/
         np.savetxt('predict.txt', predictions, '%i')
         calculate_accuracy(label_result, predictions)
 
+def calculate_accuracy(labels, predictions):
+    acc_scores = []
+    f1_scores = []
+    recall_scores = []
+    precision_scores = []
 
+    for i in range(labels.shape[0]):
+        pred = predictions[i]
+        target = labels[i]
+
+        val_acc = accuracy_score(target, pred)
+        val_f1 = f1_score(target, pred)
+        val_recall = recall_score(target, pred)
+        val_precision = precision_score(target, pred)
+
+        acc_scores.append(val_acc)
+        f1_scores.append(val_f1)
+        recall_scores.append(val_recall)
+        precision_scores.append(val_precision)
+
+    acc = np.mean(acc_scores)
+    f1 = np.mean(f1_scores)
+    recall = np.mean(recall_scores)
+    precision = np.mean(precision_scores)
+
+    return acc, f1, recall, precision
+
+
+'''
 def calculate_accuracy(labels, predictions):
     true_positive = 0  # 1 if sum - 1
     true_negative = 0  # 1 if true - pred
@@ -60,7 +93,7 @@ def calculate_accuracy(labels, predictions):
     print('Precision: {}'.format(precision * 100))
     print('Recall: {}'.format(recall * 100))
     print('F1: {}'.format(f1 * 100))
-
+'''
 
 def predict88(cqt_result):
     model = load_model('model_train_88.best.h5')
