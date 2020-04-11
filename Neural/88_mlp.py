@@ -19,7 +19,7 @@ from preprocess import PITCH_RANGE
 
 EPOCH_NUM = 20
 BATCH_SIZE = 32
-K_FOLD = 10
+K_FOLD = 5
 
 def main():
     fold_gen = FoldGen('../data/merged')

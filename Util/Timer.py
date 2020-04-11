@@ -9,7 +9,7 @@ class Timer:
         self.start = self.__get_time()
 
     def toc(self):
-        return (self.__get_time() - self.start) / 1000000000
+        return self.__get_time() - self.start
 
     def __get_time(self):
         return time.perf_counter()
