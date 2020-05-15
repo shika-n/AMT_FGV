@@ -15,6 +15,7 @@ h5py = "*"
 pydot = "*"
 graphviz = "*"
 pandas = "*"
+streamlit = "*"
 
 [requires]
 python_version = "3.7"

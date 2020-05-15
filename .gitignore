@@ -2,6 +2,8 @@
 .vscode/
 __pycache__/
 data/
+data_old/
+sl_data/
 
 *.wav
 *.png
