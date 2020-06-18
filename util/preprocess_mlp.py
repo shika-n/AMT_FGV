@@ -24,16 +24,18 @@ def process(file_path_or_bytes, st_status):
     cqt_result = generate_cqt(file_path_or_bytes, st_status)  # (PITCH_RANGE, time)
 
     if isinstance(file_path_or_bytes, str) and isfile(file_path_or_bytes[:-4] + '.txt'):
+        print(isfile(file_path_or_bytes[:-4] + '.txt'))
         label_result = process_csv_data(file_path_or_bytes[:-4] + '.txt', cqt_result.shape[1], st_status)
+        label_result = label_result[PITCH_RANGE:, :]
     else:
         label_result = None
 
-    with h5py.File('sl_data/models/mlp_20epoch_10early/means_stds.h5', 'r') as h5f:
+    with h5py.File('sl_data/std/means_stds.h5', 'r') as h5f:
         cqt_result = np.divide(np.subtract(cqt_result, h5f['means']), h5f['stds'])
 
     st_status.success('Data loaded successfully')
 
-    return cqt_result, label_result[PITCH_RANGE:, :]
+    return cqt_result, label_result
 
 def process_csv_data(file_path, cqt_length, st_status):
     st_status.text('Processing CSV data...')

@@ -19,11 +19,11 @@ BINS_PER_OCTAVE = 36
 NUM_BINS = NUM_OCTAVES * BINS_PER_OCTAVE
 WINDOW_SIZE = 7
 
-def preprocess_wav_file(file_path_or_path, Y_numSlice):
+def preprocess_wav_file(file_path_or_bytes, Y_numSlice):
     # returns 1 example (downsampled, cqt, normalized)
     np_array_list = []
 
-    y, sr = auto_load(file_path_or_path, sr =None)
+    y, sr = auto_load(file_path_or_bytes, sr =None)
     y_downsample = librosa.resample(y, orig_sr=sr, target_sr=DOWNSAMPLED_SR)
     CQT_result = librosa.cqt(y_downsample, sr=DOWNSAMPLED_SR, hop_length=HOP_LENGTH, n_bins=NUM_BINS, bins_per_octave=BINS_PER_OCTAVE)
     CQT_result = np.absolute(CQT_result)
@@ -51,7 +51,7 @@ def preprocess_wav_file(file_path_or_path, Y_numSlice):
     '''
     ########
 
-    with h5py.File('sl_data/models/mlp_20epoch_10early/means_stds.h5', 'r') as h5f:
+    with h5py.File('sl_data/std/means_stds-nm.h5', 'r') as h5f:
         #cqt_result = np.divide(np.subtract(cqt_result, h5f['means']), h5f['stds'])
     
         mean = h5f['means'][:]#np.mean(combined, axis = 1, keepdims =True)
@@ -100,13 +100,13 @@ def preprocess_midi_truth(filename):
     truth = events.get_ground_truth(31.25, DURATION) # (88, numSlices)
     return truth
 
-def get_wav_midi_data(file_path_or_path, st_status):
+def get_wav_midi_data(file_path_or_bytes, st_status):
     Y_numSlices = None
     Y_list = []
 
-    if isinstance(file_path_or_path, str):
+    if isinstance(file_path_or_bytes, str) and os.path.isfile(file_path_or_bytes[:-4] + '.mid'):
         st_status.text('Generating ground truth from midi')
-        Y_i = preprocess_midi_truth(file_path_or_path[:-4] + '.mid')
+        Y_i = preprocess_midi_truth(file_path_or_bytes[:-4] + '.mid')
         Y_numSlices = Y_i.shape[1]
     else:
         Y_i = None
@@ -115,7 +115,7 @@ def get_wav_midi_data(file_path_or_path, st_status):
 
 
     st_status.text('Preprocessing WAV file')
-    X, numSlices = preprocess_wav_file(file_path_or_path, Y_numSlices)
+    X, numSlices = preprocess_wav_file(file_path_or_bytes, Y_numSlices)
     
     # Custom - modified preprocess_wav_file return value
     ####
@@ -151,8 +151,8 @@ def get_wav_midi_data(file_path_or_path, st_status):
 
     return X, Y
 
-def process(file_path_or_path, st_status):
+def process(file_path_or_bytes, st_status):
     st_status.text('Processing...')
-    X, Y = get_wav_midi_data(file_path_or_path, st_status)
+    X, Y = get_wav_midi_data(file_path_or_bytes, st_status)
     #print ("Number of Training Examples: {}".format(X.shape[0]))
     return X, np.asarray(Y)

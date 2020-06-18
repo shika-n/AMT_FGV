@@ -4,8 +4,14 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import h5py
+import matplotlib.pyplot as plt
+import plotly.express as px
+import librosa
 from numba import jit
+#from midiutil import MIDIFile
+from MidiUtil import MIDIFile
 
+import SessionState
 import util.model_loader as loader
 import util.preprocessing_handler as preprocessing_handler
 import util.file_handler as file_handler
@@ -14,13 +20,16 @@ MODEL_FOLDER = 'sl_data/models'
 PRESET_FOLDER = 'sl_data/presets'
 
 presets = {
-    'Music 1': 'MAPS_MUS-chpn-p1_AkPnBcht.wav',
-    'Music 2': 'B',
+    'Chopin 15': 'MAPS_MUS-chpn-p15_ENSTDkAm.wav',
+    'Mozart Turkish March': 'Mozart - Rondo Alla Turca (Turkish March) (online-audio-converter.com).wav',
+    'Chopin 14': 'MAPS_MUS-chpn-p14_ENSTDkAm.wav',
 }
 
-loaded_model = None
+VIEW_WIDTH = 800
 
 def main():
+    session_state = SessionState.get(last_predictions=None)
+
     # ======== SIDE BAR ========
     st.sidebar.header('Models')
 
@@ -45,10 +54,15 @@ def main():
     keys, losses = parse_file_list(file_names)
     selected_variant = st.sidebar.selectbox('Fold Variants', keys)
 
-    include_negatives = st.sidebar.checkbox('Include negatives (Preview only)')
-    brightness_multiplier = st.sidebar.slider('Brightness multiplier (Preview only)', 1.0, 10.0, value=1.0)
-    brightness_offset = st.sidebar.slider('Brightness offset (Preview only)', -2.0, 2.0, value=0.0)
-    enable_color_ramp = st.sidebar.checkbox('Enable color ramp')
+    #include_negatives = st.sidebar.checkbox('Include negatives (Preview only)')
+    #brightness_multiplier = st.sidebar.slider('Brightness multiplier (Preview only)', 1.0, 10.0, value=1.0)
+    #brightness_offset = st.sidebar.slider('Brightness offset (Preview only)', -2.0, 2.0, value=0.0)
+    #enable_color_ramp = st.sidebar.checkbox('Enable color ramp')
+
+    st.sidebar.header('Post-Processing')
+    rounding_threshold = st.sidebar.slider('Rounding threshold', 0.0, 1.0, value=0.5, step=0.1)
+    minimum_fill = st.sidebar.slider('Minimum fill', 0, 50, value=8)
+    gap_threshold = st.sidebar.slider('Gap threshold', 0, 50, value=5)
 
     # ======== MAIN PAGE ========
 
@@ -91,8 +105,14 @@ def main():
         if file_bytes is not None:
             cqt, labels = preprocessing_handler.preprocess(file_bytes, status, architecture_selected)
 
+            cqt_view, labels_view = cqt, labels
+
             if architecture_selected == 'cnn':
                 cqt_view, labels_view = preprocessing_handler.preprocess(file_bytes, status, 'mlp')
+            elif architecture_selected == 'lstm' or architecture_selected == 'bilstm':
+                cqt_view = cqt_view.T
+                if labels_view is not None:
+                    labels_view = labels_view.T
     else:
         st.text('Selected preset: {}'.format(presets[selected_preset]))
         file_path = join(PRESET_FOLDER, presets[selected_preset])
@@ -100,11 +120,49 @@ def main():
         file_bytes = file_handler.get_file_bytes(file_path)
         cqt, labels = preprocessing_handler.preprocess(file_path, status, architecture_selected)
 
+        cqt_view, labels_view = cqt, labels
+
         if architecture_selected == 'cnn':
             cqt_view, labels_view = preprocessing_handler.preprocess(file_path, status, 'mlp')
+        elif architecture_selected == 'lstm' or architecture_selected == 'bilstm':
+                cqt_view = cqt_view.T
+                if labels_view is not None:
+                    labels_view = labels_view.T
 
     if file_bytes is not None:
         st.audio(file_bytes)
+
+    # Data freq
+    data = np.load('sl_data/tmp/Y_input_shuffled-nm.npy', mmap_mode='r')
+    if data.shape[0] > data.shape[1]:
+        data = data[:].T
+    else:
+        data = data[:]
+
+    st.write(data.shape)
+    freq = np.sum(np.clip(data, 0, 1), axis=1)
+    st.write(freq.shape)
+
+    #zeroes = np.sum(np.abs(np.clip(data, 0, 1) -1), axis=1)
+    zeroes = np.zeros(data.shape[0]) + data.shape[1]
+
+    st.write(freq.shape)
+
+    ones_zeroes_data = np.asarray([zeroes, freq]).T
+    st.write(ones_zeroes_data.shape)
+
+    ones_zeroes = pd.DataFrame(
+        ones_zeroes_data,
+        columns=['zeroes', 'ones']
+    )
+
+    st.bar_chart(ones_zeroes)
+
+    st.write((freq / data.shape[1]) * 100)
+
+
+
+    #########
 
     if cqt is not None:
         st.text('CQT\'s shape: {}'.format(cqt.shape))
@@ -119,41 +177,94 @@ def main():
         #slider = st.slider('Offset', max_value=get_cqt_length('sl_data/tmp/train_X.npy') - 800, step=1)
         #pre_processed_CQT = load_preprocessed_CQT('sl_data/tmp/train_X.npy', 800, offset=slider)
 
-        if architecture_selected != 'cnn':
-            slider = st.slider('Offset', max_value=cqt.shape[1] - 800, step=1)
-            pre_processed_CQT = prepare_view_CQT(cqt, 800, offset=slider)
-        else:
-            slider = st.slider('Offset', max_value=cqt_view.shape[1] - 800, step=1)
-            pre_processed_CQT = prepare_view_CQT(cqt_view, 800, offset=slider)
+        slider = st.slider('Offset', max_value=cqt_view.shape[1] - VIEW_WIDTH, step=1)
+        #view_cqt = prepare_view_data(cqt_view, VIEW_WIDTH, offset=slider)
 
         #### !!! Get min_val from file
-        min_val = np.min(pre_processed_CQT) if include_negatives else 0
+        #min_val = np.min(view_cqt) if include_negatives else 0
         
-        #st.write(min_val)
         # Color ramp attempt
 
-        image = np.clip((pre_processed_CQT - np.clip(min_val, np.NINF, 0.0)) * brightness_multiplier + brightness_offset, 0.0, 1.0)
-        if enable_color_ramp:
-            image = color_ramp(image)
-        cqt_view_widget.image(image, use_column_width=True)
+        #image = np.clip((view_cqt - np.clip(min_val, np.NINF, 0.0)) * brightness_multiplier + brightness_offset, 0.0, 1.0)
+        #if enable_color_ramp:
+        #    image = color_ramp(image)
+        #cqt_view_widget.image(image, use_column_width=True)
+
+        #D = librosa.amplitude_to_db(view_cqt[:, slider:(slider+800)], ref=np.max)
+        #librosa.display.specshow(D, x_axis='time', y_axis='cqt_note', bins_per_octave=36)
+        #st.pyplot()
+
+        #cqt_fig = px.imshow(view_cqt[:, slider:(slider + 800)], origin='lower', zmax=2)
+        #cqt_fig.update_layout(autosize=False, width=500, height=400, margin=dict(l=10, r=10, b=10, t=1000))
+        #st.plotly_chart(cqt_fig, use_container_width=True)
 
         # Labels
-
-        if labels is not None:
+        if labels_view is not None:
             #pre_processed_CQT2 = load_preprocessed_CQT('sl_data/model1/train_Y.npy', 800, offset=slider)
-            if architecture_selected != 'cnn':
-                pre_processed_labels = prepare_view_CQT(labels, 800, offset=slider)
-            else:
-                pre_processed_labels = prepare_view_CQT(labels_view, 800, offset=slider)
+
+            pre_processed_labels = prepare_view_data(labels_view, VIEW_WIDTH, offset=slider)
             label_image = np.clip(pre_processed_labels, 0.0, 1.0)
             label_view_widget.image(label_image, use_column_width=True)
+
+            label_fig = px.imshow(label_image[:, slider:(slider + VIEW_WIDTH)], height=220, origin='lower')
+            #st.plotly_chart(label_fig, use_container_width=True)
         else:
             label_view_widget.warning('Labels are not supported for this file')
+
+        last_run_widget = st.empty()
+        post_last_run_widget = st.empty()
+        if session_state.last_predictions is not None:
+            last_predictions = session_state.last_predictions
+            prepared_predictions = prepare_view_data(last_predictions, VIEW_WIDTH, offset=slider)
+            last_run_widget.image(prepared_predictions, use_column_width=True)
+
+            post_predictions = preprocessing_handler.post_process(last_predictions, minimum_fill, gap_threshold)
+            post_prepared_predictions = prepare_view_data(post_predictions, VIEW_WIDTH, offset=slider)
+            post_last_run_widget.image(post_prepared_predictions, use_column_width=True)
 
         # Running
         if (st.button('Run Model')):
             model_status = st.text('[Model Status]')
-            loaded_model = loader.load_model_sl(selected_model_path + '.h5', model_status)
+            predictions = np.asarray(loader.run_model_sl(selected_model_path + '.h5', cqt, model_status, architecture_selected, rounding_threshold))
+
+            session_state.last_predictions = predictions
+
+            prepared_predictions = prepare_view_data(predictions, VIEW_WIDTH, offset=slider)
+            last_run_widget.image(prepared_predictions, use_column_width=True)
+
+            post_predictions = preprocessing_handler.post_process(predictions, minimum_fill, gap_threshold)
+            post_prepared_predictions = prepare_view_data(post_predictions, VIEW_WIDTH, offset=slider)
+            post_last_run_widget.image(post_prepared_predictions, use_column_width=True)
+
+            create_midi(post_predictions)
+
+
+def create_midi(predictions):
+    track    = 0
+    channel  = 0
+    time     = np.zeros(88)   # In beats|| initialize 88 list
+    tempo    = 240   # In BPM           w masi gtw gmn cara nentuin tempo
+    volume   = 100  # 0-127, as per the MIDI standard
+
+    miditrack = MIDIFile(1)  # One track
+    miditrack.addTempo(track, 0, tempo)
+
+    if predictions.shape[0] < predictions.shape[1]:
+        predictions = predictions.T
+
+    print ("\nSaving track to MIDI . . .")
+    for timeframe in range(predictions.shape[0]):
+        for pitch in range(predictions.shape[1]):
+            current_time = timeframe * (44 / 1000)     
+            if predictions[timeframe,pitch] == 1 and predictions[timeframe-1,pitch] == 0:
+                time[pitch] = current_time
+            if predictions[timeframe, pitch] == 0 and predictions[timeframe-1,pitch] == 1:
+                duration = (current_time - time[pitch])
+                miditrack.addNote(track, channel, pitch + 21, time[pitch], duration, volume)
+
+    with open("result.mid", "wb") as output_file:
+        miditrack.writeFile(output_file)
+    print('saved')
 
 def color_ramp(data):
     colors = [
@@ -197,41 +308,11 @@ def load_losses(file_path):
                             columns=['Epoch #', 'train_loss', 'val_loss', 'Time (s)']
                            )
 
-@st.cache
-def load_preprocessed_CQT(file_path, length, offset=0):
-    if file_path[-4:] == '.npy':
-        data = np.load(file_path, mmap_mode='r')
-        if data.shape[0] > data.shape[1]:
-            return data[offset:(offset + length), :].T
-        else:
-            return data[:, offset:(offset + length)]
-    else:
-        with h5py.File(file_path, 'r') as h5f:
-            if h5f['data'].shape[0] > h5f['data'].shape[1]:
-                return h5f['data'][offset:(offset + length), :].T
-            else:
-                return h5f['data'][:, offset:(offset + length)]
-
-def prepare_view_CQT(data, length, offset=0):
+def prepare_view_data(data, length, offset=0):
     if data.shape[0] > data.shape[1]:
         return data[offset:(offset + length), :].T
     else:
         return data[:, offset:(offset + length)]
-
-def get_cqt_length(file_path):
-    if file_path[-4:] == '.npy':
-        data = np.load(file_path, mmap_mode='r')
-        if data.shape[0] > data.shape[1]:
-            return data.shape[0]
-        else:
-            return data.shape[1]
-    else:
-        with h5py.File(file_path, 'r') as h5f:
-            if h5f['data'].shape[0] > h5f['data'].shape[1]:
-                return h5py.Dataset.len(h5f['data'])
-            else:
-                return h5py.Dataset.len(h5f['data'][0])
-
 
 if __name__ == '__main__':
     main()

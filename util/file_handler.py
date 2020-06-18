@@ -42,6 +42,8 @@ def load_from_bytes(file_bytes, sr):
     data, sample_rate = sf.read(file_bytes, dtype='float32')
     data = data.T
 
+    data = librosa.to_mono(data)
+
     if sr is not None:
         data = librosa.resample(data, sample_rate, sr)
 
