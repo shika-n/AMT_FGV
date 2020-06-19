@@ -28,7 +28,14 @@ presets = {
 VIEW_WIDTH = 800
 
 def main():
-    session_state = SessionState.get(last_predictions=None)
+    session_state = SessionState.get(
+        last_predictions = None,
+        last_post_predictions = None,
+        cqt = None,
+        labels = None,
+        cqt_view = None,
+        labels_view = None
+    )
 
     # ======== SIDE BAR ========
     st.sidebar.header('Models')
@@ -60,9 +67,10 @@ def main():
     #enable_color_ramp = st.sidebar.checkbox('Enable color ramp')
 
     st.sidebar.header('Post-Processing')
-    rounding_threshold = st.sidebar.slider('Rounding threshold', 0.0, 1.0, value=0.5, step=0.1)
+    rounding_threshold = st.sidebar.slider('Rounding threshold', 0.0, 1.0, value=0.5, step=0.05)
     minimum_fill = st.sidebar.slider('Minimum fill', 0, 50, value=8)
     gap_threshold = st.sidebar.slider('Gap threshold', 0, 50, value=5)
+    post_iter_count = st.sidebar.slider('Post processing iteration count', 0, 5, value = 1)
 
     # ======== MAIN PAGE ========
 
@@ -75,91 +83,106 @@ def main():
     selected_model_path = join(MODEL_FOLDER, selected_conf_name, selected_variant)
     run_data = load_losses(join(MODEL_FOLDER, selected_conf_name, losses[selected_variant]))
 
+    st.text(selected_model_path)
     st.text('This model is ran for %i epochs.' % (run_data.iloc[-1, 0] + 1))
-    st.subheader('Loss Graph')
 
-    # Quick plot
+    # ============== LOSS RAW DATA ====================
     # Change to altair/matplotlib if axis labels are needed
     # https://github.com/streamlit/streamlit/issues/1129
-    st.line_chart(run_data.iloc[:, 1:3])
-    if st.checkbox('Show raw data'):
-        st.dataframe(run_data.iloc[:])
+    #st.subheader('Loss Graph')
+    #st.line_chart(run_data.iloc[:, 1:3])
+    #if st.checkbox('Show raw data'):
+    #    st.dataframe(run_data.iloc[:])
 
     ##################################################
-
-    st.title('TEST AREA')
 
     preset_options = ['Upload a file']
     for key in presets:
         preset_options.append(key)
 
     selected_preset = st.selectbox('Select a preset or upload', preset_options)
-    
+    audio_player = st.empty()
+
     status = st.empty()
 
     file_bytes = None
-    cqt = None
-    labels = None
     if selected_preset == preset_options[0]:
         file_bytes = st.file_uploader('Upload file', type=['wav', 'txt'])
+
         if file_bytes is not None:
-            cqt, labels = preprocessing_handler.preprocess(file_bytes, status, architecture_selected)
+            if st.button('Load'):
+                cqt, labels = preprocessing_handler.preprocess(file_bytes, status, architecture_selected)
+
+                cqt_view, labels_view = cqt, labels
+
+                if architecture_selected == 'cnn' or architecture_selected == 'mlp':
+                    cqt_view, labels_view = preprocessing_handler.preprocess(file_bytes, status, 'mlp')
+                elif architecture_selected == 'lstm' or architecture_selected == 'bilstm':
+                    cqt_view = cqt_view.T
+                    if labels_view is not None:
+                        labels_view = labels_view.T
+
+                session_state.cqt = cqt
+                session_state.labels = labels
+                session_state.cqt_view = cqt_view
+                session_state.labels_view = labels_view
+    else:
+        file_path = join(PRESET_FOLDER, presets[selected_preset])
+        file_bytes = file_handler.get_file_bytes(file_path)
+
+        if st.button('Load'):
+            cqt, labels = preprocessing_handler.preprocess(file_path, status, architecture_selected)
 
             cqt_view, labels_view = cqt, labels
 
-            if architecture_selected == 'cnn':
-                cqt_view, labels_view = preprocessing_handler.preprocess(file_bytes, status, 'mlp')
+            if architecture_selected == 'cnn' or architecture_selected == 'mlp':
+                cqt_view, labels_view = preprocessing_handler.preprocess(file_path, status, 'mlp')
             elif architecture_selected == 'lstm' or architecture_selected == 'bilstm':
-                cqt_view = cqt_view.T
-                if labels_view is not None:
-                    labels_view = labels_view.T
-    else:
-        st.text('Selected preset: {}'.format(presets[selected_preset]))
-        file_path = join(PRESET_FOLDER, presets[selected_preset])
+                    cqt_view = cqt_view.T
+                    if labels_view is not None:
+                        labels_view = labels_view.T
 
-        file_bytes = file_handler.get_file_bytes(file_path)
-        cqt, labels = preprocessing_handler.preprocess(file_path, status, architecture_selected)
-
-        cqt_view, labels_view = cqt, labels
-
-        if architecture_selected == 'cnn':
-            cqt_view, labels_view = preprocessing_handler.preprocess(file_path, status, 'mlp')
-        elif architecture_selected == 'lstm' or architecture_selected == 'bilstm':
-                cqt_view = cqt_view.T
-                if labels_view is not None:
-                    labels_view = labels_view.T
+            session_state.cqt = cqt
+            session_state.labels = labels
+            session_state.cqt_view = cqt_view
+            session_state.labels_view = labels_view
 
     if file_bytes is not None:
-        st.audio(file_bytes)
+        audio_player.audio(file_bytes)
 
-    # Data freq
-    data = np.load('sl_data/tmp/Y_input_shuffled-nm.npy', mmap_mode='r')
-    if data.shape[0] > data.shape[1]:
-        data = data[:].T
-    else:
-        data = data[:]
+    cqt = session_state.cqt
+    labels = session_state.labels
+    cqt_view = session_state.cqt_view
+    labels_view = session_state.labels_view
 
-    st.write(data.shape)
-    freq = np.sum(np.clip(data, 0, 1), axis=1)
-    st.write(freq.shape)
+    # ================= Data freq =====================
+    #data = np.load('sl_data/tmp/Y_input_shuffled-nm.npy', mmap_mode='r')
+    #if data.shape[0] > data.shape[1]:
+    #    data = data[:].T
+    #else:
+    #    data = data[:]
 
-    #zeroes = np.sum(np.abs(np.clip(data, 0, 1) -1), axis=1)
-    zeroes = np.zeros(data.shape[0]) + data.shape[1]
+    #st.write(data.shape)
+    #freq = np.sum(np.clip(data, 0, 1), axis=1)
+    #st.write(freq.shape)
 
-    st.write(freq.shape)
+    ##zeroes = np.sum(np.abs(np.clip(data, 0, 1) -1), axis=1)
+    #zeroes = np.zeros(data.shape[0]) + data.shape[1]
 
-    ones_zeroes_data = np.asarray([zeroes, freq]).T
-    st.write(ones_zeroes_data.shape)
+    #st.write(freq.shape)
 
-    ones_zeroes = pd.DataFrame(
-        ones_zeroes_data,
-        columns=['zeroes', 'ones']
-    )
+    #ones_zeroes_data = np.asarray([zeroes, freq]).T
+    #st.write(ones_zeroes_data.shape)
 
-    st.bar_chart(ones_zeroes)
+    #ones_zeroes = pd.DataFrame(
+    #    ones_zeroes_data,
+    #    columns=['zeroes', 'ones']
+    #)
 
-    st.write((freq / data.shape[1]) * 100)
+    #st.bar_chart(ones_zeroes)
 
+    #st.write((freq / data.shape[1]) * 100)
+    
 
 
     #########
@@ -211,32 +234,39 @@ def main():
         else:
             label_view_widget.warning('Labels are not supported for this file')
 
-        last_run_widget = st.empty()
+        # Running
+        if (st.button('Run Model')):
+            model_status = st.text('[Model Status]')
+            predictions = np.asarray(loader.run_model_sl(selected_model_path + '.h5', cqt, model_status, architecture_selected))
+            session_state.last_predictions = predictions
+
+            # Post
+            post_predictions = preprocessing_handler.post_process(predictions, rounding_threshold, minimum_fill, gap_threshold, post_iter_count)
+            session_state.last_post_predictions = post_predictions
+
+        # ============ RESULT ===============
         post_last_run_widget = st.empty()
         if session_state.last_predictions is not None:
             last_predictions = session_state.last_predictions
             prepared_predictions = prepare_view_data(last_predictions, VIEW_WIDTH, offset=slider)
-            last_run_widget.image(prepared_predictions, use_column_width=True)
+            
+            st.text('Last run result')
+            st.image(prepared_predictions, use_column_width=True)
 
-            post_predictions = preprocessing_handler.post_process(last_predictions, minimum_fill, gap_threshold)
+        if session_state.last_post_predictions is not None:
+            if st.button('Re-run Post Processing'):
+                session_state.last_post_predictions = preprocessing_handler.post_process(last_predictions, rounding_threshold, minimum_fill, gap_threshold, post_iter_count)
+
+            post_predictions = session_state.last_post_predictions
             post_prepared_predictions = prepare_view_data(post_predictions, VIEW_WIDTH, offset=slider)
-            post_last_run_widget.image(post_prepared_predictions, use_column_width=True)
+            
+            st.text('Last run after post process')
+            st.image(post_prepared_predictions, use_column_width=True)
 
-        # Running
-        if (st.button('Run Model')):
-            model_status = st.text('[Model Status]')
-            predictions = np.asarray(loader.run_model_sl(selected_model_path + '.h5', cqt, model_status, architecture_selected, rounding_threshold))
-
-            session_state.last_predictions = predictions
-
-            prepared_predictions = prepare_view_data(predictions, VIEW_WIDTH, offset=slider)
-            last_run_widget.image(prepared_predictions, use_column_width=True)
-
-            post_predictions = preprocessing_handler.post_process(predictions, minimum_fill, gap_threshold)
-            post_prepared_predictions = prepare_view_data(post_predictions, VIEW_WIDTH, offset=slider)
-            post_last_run_widget.image(post_prepared_predictions, use_column_width=True)
-
-            create_midi(post_predictions)
+            if st.button('Save MIDI'):
+                create_midi(post_predictions)
+                np.save('post_predictions.npy', post_predictions)
+                st.info('MIDI is saved')
 
 
 def create_midi(predictions):

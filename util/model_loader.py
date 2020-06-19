@@ -14,7 +14,7 @@ def load_model_sl(file_name, st_status):
 
     return model
 
-def run_model_sl(file_name, input, st_status, architecture_selected, rounding_threshold):
+def run_model_sl(file_name, input, st_status, architecture_selected):
     model = load_model_sl(file_name, st_status)
 
     print('--------')
@@ -55,5 +55,5 @@ def run_model_sl(file_name, input, st_status, architecture_selected, rounding_th
     st_status.info('Prediction done! {}'.format(prediction.shape))
     prediction = np.reshape(prediction, (prediction.shape[0], prediction.shape[1]))
 
-    return np.clip(np.ceil(prediction - rounding_threshold), 0, 1)
+    return np.clip(prediction, 0, 1)
 
