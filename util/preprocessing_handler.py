@@ -16,7 +16,7 @@ def preprocess(file_path_or_bytes, st_status, architecture_selected):
         return preprocess_mlp.process(file_path_or_bytes, st_status)
     elif architecture_selected == 'cnn':
         return preprocess_cnn.process(file_path_or_bytes, st_status)
-    elif architecture_selected == 'lstm' or architecture_selected == 'bilstm':
+    elif architecture_selected == 'lstm' or architecture_selected == 'bilstm' or architecture_selected == 'dnn':
         return preprocess_lstm.process(file_path_or_bytes, st_status)
 
 

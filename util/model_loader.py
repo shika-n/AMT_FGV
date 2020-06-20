@@ -18,11 +18,12 @@ def run_model_sl(file_name, input, st_status, architecture_selected):
     model = load_model_sl(file_name, st_status)
 
     print('--------')
+    #print(model.summary())
 
     st_status.text('Predicting... {}'.format(input.shape))
     if architecture_selected == 'mlp':
         input_data = input.T
-    elif architecture_selected == 'lstm' or architecture_selected == 'bilstm':
+    elif architecture_selected == 'lstm' or architecture_selected == 'bilstm' or architecture_selected == 'dnn':
         data_max_shape = (input.shape[0] // 100) * 100 # 100 might be size_samples
         
         x_data = np.reshape(input[:data_max_shape, :], (input.shape[0] // 100, 100, 252))
@@ -50,8 +51,7 @@ def run_model_sl(file_name, input, st_status, architecture_selected):
 
     prediction = np.asarray(model.predict(input_data))
 
-    if architecture_selected == 'lstm' or architecture_selected == 'bilstm':
-        print(prediction.shape)
+    if architecture_selected == 'lstm' or architecture_selected == 'bilstm' or architecture_selected == 'dnn':
         prediction = np.reshape(prediction, (prediction.shape[0] * prediction.shape[1], 88))
 
     del model

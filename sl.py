@@ -7,6 +7,7 @@ import h5py
 import matplotlib.pyplot as plt
 import plotly.express as px
 import librosa
+import io
 from numba import jit
 
 import base64
@@ -120,7 +121,7 @@ def main():
 
                 if architecture_selected == 'cnn' or architecture_selected == 'mlp':
                     cqt_view, labels_view = preprocessing_handler.preprocess(file_bytes, status, 'mlp')
-                elif architecture_selected == 'lstm' or architecture_selected == 'bilstm':
+                elif architecture_selected == 'lstm' or architecture_selected == 'bilstm' or architecture_selected == 'dnn':
                     cqt_view = cqt_view.T
                     if labels_view is not None:
                         labels_view = labels_view.T
@@ -140,7 +141,7 @@ def main():
 
             if architecture_selected == 'cnn' or architecture_selected == 'mlp':
                 cqt_view, labels_view = preprocessing_handler.preprocess(file_path, status, 'mlp')
-            elif architecture_selected == 'lstm' or architecture_selected == 'bilstm':
+            elif architecture_selected == 'lstm' or architecture_selected == 'bilstm' or architecture_selected == 'dnn':
                     cqt_view = cqt_view.T
                     if labels_view is not None:
                         labels_view = labels_view.T
@@ -160,17 +161,22 @@ def main():
 
     config = selected_model_path
     if file_bytes is not None:
-        config += base64.b64encode(file_bytes).decode()[:32]
+        if isinstance(file_bytes, io.BytesIO):
+            config += base64.b64encode(file_bytes.read()).decode()[:32]
+        else:
+            config += base64.b64encode(file_bytes).decode()[:32]
     
     if config != session_state.last_config:
-        last_predictions = None
-        last_post_predictions = None
-        cqt = None
-        labels = None
-        cqt_view = None
-        labels_view = None
+        session_state.last_predictions = None
+        session_state.last_post_predictions = None
+        session_state.cqt = None
+        session_state.labels = None
+        session_state.cqt_view = None
+        session_state.labels_view = None
 
         session_state.last_config = config
+
+        return
 
     # ================= Data freq =====================
     #data = np.load('sl_data/tmp/Y_input_shuffled-nm.npy', mmap_mode='r')
@@ -216,8 +222,12 @@ def main():
 
         #slider = st.slider('Offset', max_value=get_cqt_length('sl_data/tmp/train_X.npy') - 800, step=1)
         #pre_processed_CQT = load_preprocessed_CQT('sl_data/tmp/train_X.npy', 800, offset=slider)
-
-        slider = st.slider('Offset', max_value=cqt_view.shape[1] - VIEW_WIDTH, step=1)
+        
+        long_width = int(np.max(cqt_view.shape))
+        if long_width - VIEW_WIDTH <= 0:
+            slider = 0
+        else:
+            slider = st.slider('Offset', max_value=long_width - VIEW_WIDTH, step=1)
         #view_cqt = prepare_view_data(cqt_view, VIEW_WIDTH, offset=slider)
 
         #### !!! Get min_val from file
@@ -281,7 +291,7 @@ def main():
             st.image(post_prepared_predictions, use_column_width=True)
 
             if st.button('Run MIDI'):
-                byte_data = create_midi(post_predictions)
+                byte_data = create_midi(post_predictions, architecture_selected)
                 #np.save('post_predictions.npy', post_predictions)
                 st.info('MIDI is saved')
                 st.markdown(get_download_link(byte_data), unsafe_allow_html=True)
@@ -290,12 +300,18 @@ def get_download_link(byte_data):
     b64 = base64.b64encode(byte_data)
     return f'<a href="data:application/octet-stream;base64,{b64.decode()}" download="result.mid">Download MIDI</a>'
 
-def create_midi(predictions):
+def create_midi(predictions, architecture_selected):
     track    = 0
     channel  = 0
     time     = np.zeros(88)   # In beats|| initialize 88 list
     tempo    = 240   # In BPM           w masi gtw gmn cara nentuin tempo
     volume   = 100  # 0-127, as per the MIDI standard
+
+    ms_per_frame = 22500 / 512
+
+    if architecture_selected == 'cnn' or architecture_selected == 'mlp':
+        ms_per_frame = 16000 / 512
+        tempo = 60 # 31.25 / 43.95
 
     miditrack = MIDIFile(1)  # One track
     miditrack.addTempo(track, 0, tempo)
@@ -306,7 +322,7 @@ def create_midi(predictions):
     print ("\nSaving track to MIDI . . .")
     for timeframe in range(predictions.shape[0]):
         for pitch in range(predictions.shape[1]):
-            current_time = timeframe * (44 / 1000)     
+            current_time = timeframe * (ms_per_frame / 1000)
             if predictions[timeframe,pitch] == 1 and predictions[timeframe-1,pitch] == 0:
                 time[pitch] = current_time
             if predictions[timeframe, pitch] == 0 and predictions[timeframe-1,pitch] == 1:
