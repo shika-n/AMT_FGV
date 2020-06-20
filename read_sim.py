@@ -13,17 +13,21 @@ with h5py.File('simulation.h5', 'r') as h5f:
         csv_writer = csv.writer(csv_file)
         for i, output in enumerate(outputs):
             print('======== {} {}'.format(i, output.shape))
+            #continue
+            to_print = np.expand_dims(output[0, 0, 30:37], axis=0)
+            '''
             if i <= 8:
                 to_print = output[0, :7, :, 0]
             elif i <= 13:
                 to_print = np.expand_dims(output[0, :7], axis=0)
             else:
                 to_print = output[:]
-            
+            '''
             print(to_print.shape)
 
-            plt.imshow(to_print)
-            plt.show()
+            #plt.imshow(to_print)
+            #plt.show()
+            #plt.clf()
             
             csv_writer.writerow('')
             csv_writer.writerow('== {} =='.format(i))
