@@ -8,7 +8,9 @@ import matplotlib.pyplot as plt
 import plotly.express as px
 import librosa
 from numba import jit
-#from midiutil import MIDIFile
+
+import base64
+
 from MidiUtil import MIDIFile
 
 import SessionState
@@ -34,7 +36,8 @@ def main():
         cqt = None,
         labels = None,
         cqt_view = None,
-        labels_view = None
+        labels_view = None,
+        last_config = ""
     )
 
     # ======== SIDE BAR ========
@@ -155,6 +158,20 @@ def main():
     cqt_view = session_state.cqt_view
     labels_view = session_state.labels_view
 
+    config = selected_model_path
+    if file_bytes is not None:
+        config += base64.b64encode(file_bytes).decode()[:32]
+    
+    if config != session_state.last_config:
+        last_predictions = None
+        last_post_predictions = None
+        cqt = None
+        labels = None
+        cqt_view = None
+        labels_view = None
+
+        session_state.last_config = config
+
     # ================= Data freq =====================
     #data = np.load('sl_data/tmp/Y_input_shuffled-nm.npy', mmap_mode='r')
     #if data.shape[0] > data.shape[1]:
@@ -263,11 +280,15 @@ def main():
             st.text('Last run after post process')
             st.image(post_prepared_predictions, use_column_width=True)
 
-            if st.button('Save MIDI'):
-                create_midi(post_predictions)
-                np.save('post_predictions.npy', post_predictions)
+            if st.button('Run MIDI'):
+                byte_data = create_midi(post_predictions)
+                #np.save('post_predictions.npy', post_predictions)
                 st.info('MIDI is saved')
+                st.markdown(get_download_link(byte_data), unsafe_allow_html=True)
 
+def get_download_link(byte_data):
+    b64 = base64.b64encode(byte_data)
+    return f'<a href="data:application/octet-stream;base64,{b64.decode()}" download="result.mid">Download MIDI</a>'
 
 def create_midi(predictions):
     track    = 0
@@ -292,9 +313,10 @@ def create_midi(predictions):
                 duration = (current_time - time[pitch])
                 miditrack.addNote(track, channel, pitch + 21, time[pitch], duration, volume)
 
-    with open("result.mid", "wb") as output_file:
-        miditrack.writeFile(output_file)
-    print('saved')
+    #with open("result.mid", "wb") as output_file:
+    #    miditrack.writeFile(output_file)
+    #print('saved')
+    return miditrack.getBytes()
 
 def color_ramp(data):
     colors = [

@@ -933,6 +933,10 @@ class MIDITrack(object):
         fileHandle.write(self.dataLength)
         fileHandle.write(self.MIDIdata)
 
+    def getBytes(self, byte_array):
+        byte_array += self.headerString
+        byte_array += self.dataLength
+        byte_array += self.MIDIdata
 
 class MIDIHeader(object):
     '''
@@ -974,6 +978,12 @@ class MIDIHeader(object):
         fileHandle.write(self.numTracks)
         fileHandle.write(self.ticks_per_quarternote)
 
+    def getBytes(self, byte_array):
+        byte_array += self.headerString
+        byte_array += self.headerSize
+        byte_array += self.formatnum
+        byte_array += self.numTracks
+        byte_array += self.ticks_per_quarternote
 
 class MIDIFile(object):
     '''
@@ -1642,6 +1652,17 @@ class MIDIFile(object):
         # Write the MIDI Events to file.
         for i in range(0, self.numTracks):
             self.tracks[i].writeTrack(fileHandle)
+
+    def getBytes(self):
+        byte_array = bytearray()
+        self.header.getBytes(byte_array)
+        
+        self.close()
+
+        for i in range(0, self.numTracks):
+            self.tracks[i].getBytes(byte_array)
+        
+        return bytes(byte_array)
 
     def shiftTracks(self, offset=0):
         """Shift tracks to be zero-origined, or origined at offset.

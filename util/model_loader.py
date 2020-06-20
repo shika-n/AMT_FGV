@@ -19,17 +19,6 @@ def run_model_sl(file_name, input, st_status, architecture_selected):
 
     print('--------')
 
-    #layer_outputs = [layer.output for layer in model.layers]
-    #activation_model = Model(inputs=model.input, outputs=layer_outputs)
-    #activations = activation_model.predict(np.expand_dims(input[int(input.shape[0] / 2)], axis=0))
-    
-    #print(len(activations))
-    #with h5py.File('simulation.h5', 'w') as h5f:
-    #    h5f.create_dataset('length', data=[len(activations)], compression='gzip')
-    #    for i in range(len(activations)):
-    #        h5f.create_dataset('data_{}'.format(i), data=activations[i], compression='gzip')
-    #    print('simulation.h5 is saved')
-
     st_status.text('Predicting... {}'.format(input.shape))
     if architecture_selected == 'mlp':
         input_data = input.T
@@ -41,6 +30,23 @@ def run_model_sl(file_name, input, st_status, architecture_selected):
         input_data = x_data
     else:
         input_data = input
+
+
+    '''
+    #print(model.summary())
+    layer_outputs = [layer.output for layer in model.layers]
+    activation_model = Model(inputs=model.input, outputs=layer_outputs)
+    #activations = activation_model.predict(np.expand_dims(input[int(input.shape[0] / 2)], axis=0))
+    print(input_data.shape)
+    activations = activation_model.predict(np.expand_dims(input_data[input_data.shape[0] // 2], axis=0))
+
+    print(len(activations))
+    with h5py.File('simulation.h5', 'w') as h5f:
+        h5f.create_dataset('length', data=[len(activations)], compression='gzip')
+        for i in range(len(activations)):
+            h5f.create_dataset('data_{}'.format(i), data=activations[i], compression='gzip')
+        print('simulation.h5 is saved')
+    '''
 
     prediction = np.asarray(model.predict(input_data))
 
