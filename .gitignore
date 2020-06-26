@@ -8,3 +8,7 @@ sl_data/
 *.wav
 *.png
 *.h5
+*.mid
+*.csv
+*.xlsx
+*.npy
