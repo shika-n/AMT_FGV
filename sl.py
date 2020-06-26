@@ -285,13 +285,13 @@ def main():
             st.image(prepared_predictions, use_column_width=True)
 
         if session_state.last_post_predictions is not None:
-            if st.button('Re-run Post Processing'):
+            if st.button('Rerun Post-Processing'):
                 session_state.last_post_predictions = preprocessing_handler.post_process(last_predictions, rounding_threshold, minimum_fill, gap_threshold, post_iter_count)
 
             post_predictions = session_state.last_post_predictions
             post_prepared_predictions = prepare_view_data(post_predictions, VIEW_WIDTH, offset=slider)
             
-            st.text('Last run after post process')
+            st.text('Last run after post-process')
             st.image(post_prepared_predictions, use_column_width=True)
             
             if st.button('Process Sheet'):
