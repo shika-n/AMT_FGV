@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import plotly.express as px
 import librosa
 import io
+import html
 from numba import jit
 
 import base64
@@ -18,6 +19,7 @@ import SessionState
 import util.model_loader as loader
 import util.preprocessing_handler as preprocessing_handler
 import util.file_handler as file_handler
+from util.pred2sheet import pred2sheet 
 
 MODEL_FOLDER = 'sl_data/models'
 PRESET_FOLDER = 'sl_data/presets'
@@ -93,10 +95,11 @@ def main():
     # ============== LOSS RAW DATA ====================
     # Change to altair/matplotlib if axis labels are needed
     # https://github.com/streamlit/streamlit/issues/1129
-    #st.subheader('Loss Graph')
-    #st.line_chart(run_data.iloc[:, 1:3])
-    #if st.checkbox('Show raw data'):
-    #    st.dataframe(run_data.iloc[:])
+    if st.checkbox('Show loss'):
+        st.subheader('Loss Graph')
+        st.line_chart(run_data.iloc[:, 1:3])
+        #if st.checkbox('Show raw data'):
+        #    st.dataframe(run_data.iloc[:])
 
     ##################################################
 
@@ -211,9 +214,10 @@ def main():
     #########
 
     if cqt is not None:
-        st.text('CQT\'s shape: {}'.format(cqt.shape))
-        if labels is not None:
-            st.text('Label\'s shape: {}'.format(labels.shape))
+        #st.text('CQT\'s shape: {}'.format(cqt.shape))
+        #if labels is not None:
+        #    st.text('Label\'s shape: {}'.format(labels.shape))
+        st.text('Label')
 
         cqt_view_widget = st.empty()
         label_view_widget = st.empty()
@@ -289,16 +293,19 @@ def main():
             
             st.text('Last run after post process')
             st.image(post_prepared_predictions, use_column_width=True)
-
-            if st.button('Run MIDI'):
+            
+            if st.button('Process Sheet'):
                 byte_data = create_midi(post_predictions, architecture_selected)
-                #np.save('post_predictions.npy', post_predictions)
-                st.info('MIDI is saved')
-                st.markdown(get_download_link(byte_data), unsafe_allow_html=True)
+                lily_pond = pred2sheet(post_predictions)
 
-def get_download_link(byte_data):
-    b64 = base64.b64encode(byte_data)
-    return f'<a href="data:application/octet-stream;base64,{b64.decode()}" download="result.mid">Download MIDI</a>'
+                #np.save('post_predictions.npy', post_predictions)
+                st.info('Click on the URL to download')
+                st.markdown(get_download_link(byte_data, 'midi_result.mid','Download MIDI'), unsafe_allow_html=True)
+                st.text_area('LilyPond', lily_pond)
+
+def get_download_link(data, target_name, text):
+    b64 = base64.b64encode(data)
+    return f'<a href="data:application/octet-stream;base64,{b64.decode()}" download="{target_name}">{text}</a>'
 
 def create_midi(predictions, architecture_selected):
     track    = 0
