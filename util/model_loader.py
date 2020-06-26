@@ -1,8 +1,9 @@
 import streamlit as st
 import numpy as np
 import h5py
-from tensorflow.keras.models import load_model, Model
+from tensorflow.keras.models import load_model, Model, Sequential
 from tensorflow.keras.backend import clear_session
+from tensorflow.keras.layers import Bidirectional, Input
 from tensorflow.keras import backend as K
 
 def load_model_sl(file_name, st_status):
@@ -24,6 +25,10 @@ def run_model_sl(file_name, input, st_status, architecture_selected):
     if architecture_selected == 'mlp':
         input_data = input.T
     elif architecture_selected == 'lstm' or architecture_selected == 'bilstm' or architecture_selected == 'dnn':
+        newInput = Input(shape=(100, 252))
+        newOutputs = model(newInput)
+        model = Model(newInput, newOutputs)
+
         data_max_shape = (input.shape[0] // 100) * 100 # 100 might be size_samples
         
         x_data = np.reshape(input[:data_max_shape, :], (input.shape[0] // 100, 100, 252))
@@ -32,10 +37,27 @@ def run_model_sl(file_name, input, st_status, architecture_selected):
     else:
         input_data = input
 
-
     '''
-    #print(model.summary())
-    layer_outputs = [layer.output for layer in model.layers]
+    # BIDIRECTIONAL
+    layer_outputs = []
+    for t_layer in model.layers:
+        if isinstance(t_layer, Sequential):
+            for b_layer in t_layer.layers:
+                if isinstance(b_layer, Bidirectional):
+                    print(b_layer)
+                    print(b_layer.layer)
+                    layer_outputs.append(b_layer.output)
+                    print(b_layer.backward_layer)
+                    layer_outputs.append(b_layer.backward_layer.output)
+                else:
+                    print(b_layer)
+                    layer_outputs.append(b_layer.output)
+        else:
+            print(t_layer)
+            layer_outputs.append(t_layer.output)
+    #####
+
+    #layer_outputs = [layer.output for layer in model.layers]
     activation_model = Model(inputs=model.input, outputs=layer_outputs)
     #activations = activation_model.predict(np.expand_dims(input[int(input.shape[0] / 2)], axis=0))
     print(input_data.shape)
@@ -47,7 +69,8 @@ def run_model_sl(file_name, input, st_status, architecture_selected):
         for i in range(len(activations)):
             h5f.create_dataset('data_{}'.format(i), data=activations[i], compression='gzip')
         print('simulation.h5 is saved')
-    '''
+    ###
+    '''    
 
     prediction = np.asarray(model.predict(input_data))
 
