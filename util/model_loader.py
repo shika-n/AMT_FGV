@@ -19,15 +19,17 @@ def run_model_sl(file_name, input, st_status, architecture_selected):
     model = load_model_sl(file_name, st_status)
 
     print('--------')
-    #print(model.summary())
+    print(model.summary())
 
     st_status.text('Predicting... {}'.format(input.shape))
     if architecture_selected == 'mlp':
         input_data = input.T
     elif architecture_selected == 'lstm' or architecture_selected == 'bilstm' or architecture_selected == 'dnn':
-        newInput = Input(shape=(100, 252))
-        newOutputs = model(newInput)
-        model = Model(newInput, newOutputs)
+        if architecture_selected == 'bilstm':
+            # For simulation purposes
+            newInput = Input(shape=(100, 252))
+            newOutputs = model(newInput)
+            model = Model(newInput, newOutputs)
 
         data_max_shape = (input.shape[0] // 100) * 100 # 100 might be size_samples
         
@@ -57,9 +59,9 @@ def run_model_sl(file_name, input, st_status, architecture_selected):
             layer_outputs.append(t_layer.output)
     #####
 
-    #layer_outputs = [layer.output for layer in model.layers]
+    layer_outputs = [layer.output for layer in model.layers]
     activation_model = Model(inputs=model.input, outputs=layer_outputs)
-    #activations = activation_model.predict(np.expand_dims(input[int(input.shape[0] / 2)], axis=0))
+    #activations = activation_model.predict(np.expand_dims(input[:, int(input.shape[1] / 2)], axis=0))
     print(input_data.shape)
     activations = activation_model.predict(np.expand_dims(input_data[input_data.shape[0] // 2], axis=0))
 
@@ -70,7 +72,7 @@ def run_model_sl(file_name, input, st_status, architecture_selected):
             h5f.create_dataset('data_{}'.format(i), data=activations[i], compression='gzip')
         print('simulation.h5 is saved')
     ###
-    '''    
+    '''
 
     prediction = np.asarray(model.predict(input_data))
 
