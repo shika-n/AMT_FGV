@@ -11,6 +11,8 @@ import io
 import html
 from numba import jit
 
+from sklearn.metrics import multilabel_confusion_matrix, classification_report
+
 import base64
 
 from MidiUtil import MIDIFile
@@ -293,6 +295,25 @@ def main():
             
             st.text('Last run after post-process')
             st.image(post_prepared_predictions, use_column_width=True)
+
+            # TESTING PURPOSES
+            if labels_view is not None:
+                if st.checkbox('Show Confusion Matrix'):
+                    cm_labels = labels_view[:, :post_predictions.shape[1]].T
+                    cm_preds = post_predictions.T
+                    st.write(cm_labels.shape)
+                    st.write(cm_preds.shape)
+                    confusion_matrix = multilabel_confusion_matrix(cm_labels, cm_preds)
+                    cm_dict = ''
+                    for i, entry in enumerate(confusion_matrix):
+                        # TN, FP, FN, TP
+                        cm_dict += f'{i}: [{entry[0, 0]}, {entry[0, 1]}, {entry[1, 0]}, {entry[1, 1]}]\n\n'
+                    st.write('TN, FP, FN, TP')
+                    st.write(cm_dict)
+
+                    report = classification_report(cm_labels, cm_preds)
+                    st.text(report)
+            ########
             
             if st.button('Process Sheet'):
                 byte_data = create_midi(post_predictions, architecture_selected)
